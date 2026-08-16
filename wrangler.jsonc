@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "knock-knock-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-22",
+  "vars": {
+    "FRONTEND_ORIGIN": "http://localhost:3000,http://localhost:5173"
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "knock-knock",
+      "database_id": "079d8dc1-8512-4638-9025-fa5b57e6204e",
+      "migrations_dir": "../knock-knock-database/migrations"
+    }
+  ]
+}

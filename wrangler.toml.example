@@ -1,0 +1,19 @@
+name = "knock-knock-backend"
+main = "src/index.ts"
+compatibility_date = "2026-05-22"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "knock-knock"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "../knock-knock-database/migrations"
+
+[vars]
+FRONTEND_ORIGIN = "https://your-store.example.com,https://admin.example.com"
+PRODUCT_IMAGES_PUBLIC_URL = "https://images.example.com"
+EMAIL_FROM = "KNOCK-KNOCK <members@your-domain.example>"
+ENVIRONMENT = "production"
+
+[[r2_buckets]]
+binding = "PRODUCT_IMAGES"
+bucket_name = "knock-knock-product-images"

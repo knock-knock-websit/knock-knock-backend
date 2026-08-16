@@ -1,0 +1,18 @@
+{
+  "name": "knock-knock-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "WRANGLER_LOG_PATH=.wrangler/logs/dev.log wrangler dev --config wrangler.jsonc --port 8787 --persist-to ../.wrangler/shared-state",
+    "d1:migrate:local": "wrangler d1 migrations apply knock-knock --local --persist-to ../.wrangler/shared-state --config wrangler.jsonc",
+    "typecheck": "tsc --noEmit",
+    "build": "WRANGLER_LOG_PATH=.wrangler/logs/build.log wrangler deploy --config wrangler.jsonc --dry-run --outdir dist",
+    "deploy": "wrangler deploy --config wrangler.jsonc"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260515.1",
+    "typescript": "5.9.3",
+    "wrangler": "4.92.0"
+  }
+}
