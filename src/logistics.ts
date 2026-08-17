@@ -7,6 +7,46 @@ export type SevenElevenStore = {
   storePhone: string;
 };
 
+export type ShippingSettings = {
+  sevenElevenEnabled: boolean;
+  sevenEleven: number;
+  homeDeliveryEnabled: boolean;
+  homeDelivery: number;
+  updatedAt: string;
+};
+
+export async function readShippingSettings(env: Env): Promise<ShippingSettings> {
+  const settings = await env.DB.prepare(`
+    SELECT seven_eleven_enabled AS sevenElevenEnabled,
+      seven_eleven_fee AS sevenEleven,
+      home_delivery_enabled AS homeDeliveryEnabled,
+      home_delivery_fee AS homeDelivery, updated_at AS updatedAt
+    FROM shipping_settings WHERE id = 'default'
+  `).first<Omit<ShippingSettings, "sevenElevenEnabled" | "homeDeliveryEnabled"> & {
+    sevenElevenEnabled: number;
+    homeDeliveryEnabled: number;
+  }>();
+  return settings ? {
+    ...settings,
+    sevenElevenEnabled: Boolean(settings.sevenElevenEnabled),
+    homeDeliveryEnabled: Boolean(settings.homeDeliveryEnabled),
+  } : {
+    sevenElevenEnabled: true, sevenEleven: 60,
+    homeDeliveryEnabled: true, homeDelivery: 80, updatedAt: "",
+  };
+}
+
+export async function getShippingSettings(env: Env) {
+  return {
+    status: 200,
+    body: {
+      success: true,
+      message: "物流設定載入成功",
+      data: await readShippingSettings(env),
+    },
+  };
+}
+
 export async function listSevenElevenStores(request: Request, env: Env) {
   const url = new URL(request.url);
   const search = (url.searchParams.get("search") ?? "").trim().slice(0, 80);

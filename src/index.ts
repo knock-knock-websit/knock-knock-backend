@@ -37,7 +37,7 @@ import {
   validateCode,
 } from "./promotions";
 import { addMemberCartItem, deleteMemberCartItem, listMemberCart, updateMemberCartItem } from "./member-cart";
-import { listSevenElevenStores } from "./logistics";
+import { getShippingSettings, listSevenElevenStores } from "./logistics";
 import { getMemberOrder, listMemberOrders, updateMemberOrderRemittance } from "./member-orders";
 
 const jsonHeaders = { "Content-Type": "application/json; charset=utf-8" };
@@ -580,6 +580,10 @@ export default {
       if (request.method === "GET" && url.pathname === "/api/logistics/711-stores") {
         const result = await listSevenElevenStores(request, env);
         return respond(request, env, result.body, result.status ?? 200);
+      }
+      if (request.method === "GET" && url.pathname === "/api/logistics/shipping-settings") {
+        const result = await getShippingSettings(env);
+        return respond(request, env, result.body, result.status);
       }
       if (request.method === "GET" && url.pathname === "/api/members/cart") {
         const cart = await listMemberCart(request, env);

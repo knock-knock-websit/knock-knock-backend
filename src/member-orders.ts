@@ -22,6 +22,7 @@ type OrderRow = {
   pickupStoreId: string;
   pickupStoreAddress: string;
   pickupStorePhone: string;
+  deliveryAddress: string;
   promotionName: string | null;
   couponCode: string | null;
   orderNote: string;
@@ -58,6 +59,7 @@ const columns = `
   COALESCE(orders.pickup_store_id, '') AS pickupStoreId,
   COALESCE(orders.pickup_store_address, '') AS pickupStoreAddress,
   COALESCE(orders.pickup_store_phone, '') AS pickupStorePhone,
+  COALESCE(orders.delivery_address, '') AS deliveryAddress,
   orders.promotion_name AS promotionName,
   orders.coupon_code AS couponCode,
   orders.order_note AS orderNote,

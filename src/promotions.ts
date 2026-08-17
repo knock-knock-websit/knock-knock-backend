@@ -1,6 +1,6 @@
 import type { Env, OrderItemInput } from "./types";
 import { authenticatedMember } from "./member-auth";
-import { findSevenElevenStore } from "./logistics";
+import { findSevenElevenStore, readShippingSettings } from "./logistics";
 
 export type HandlerResult = { body: unknown; status?: number };
 
@@ -31,7 +31,7 @@ type CodeRow = { id: string; code: string; usageLimit: number | null; usedCount:
 type MemberContext = { id: string; email: string; memberLevel: string; createdAt: string };
 type CartProduct = { id: string; variantId: string; name: string; price: number; inventory: number; categoryId: string | null; imageUrl: string | null; specificationsJson: string };
 type PricedItem = CartProduct & { quantity: number; lineTotal: number };
-type ShippingMethod = "home" | "store" | "express";
+type ShippingMethod = "home" | "store";
 
 const promotionColumns = `
   id, name, description, promotion_method AS promotionMethod,
@@ -168,10 +168,14 @@ async function priceCart(env: Env, rawItems: unknown): Promise<{ items: PricedIt
   return { items, subtotal: items.reduce((sum, item) => sum + item.lineTotal, 0) };
 }
 
-function shippingAmount(method: ShippingMethod, subtotal: number): number {
-  if (method === "store") return 60;
-  if (method === "express") return 150;
-  return subtotal >= 1500 ? 0 : 80;
+async function shippingAmount(env: Env, method: ShippingMethod): Promise<number> {
+  const settings = await readShippingSettings(env);
+  if (method === "store") {
+    if (!settings.sevenElevenEnabled) throw new PromotionError("SHIPPING_METHOD_DISABLED", 400, "7-ELEVEN 取貨目前未開放");
+    return settings.sevenEleven;
+  }
+  if (!settings.homeDeliveryEnabled) throw new PromotionError("SHIPPING_METHOD_DISABLED", 400, "宅配目前未開放");
+  return settings.homeDelivery;
 }
 
 function validateLifecycle(promotion: PromotionRow) {
@@ -422,8 +426,8 @@ export async function validateCode(request: Request, env: Env): Promise<HandlerR
     const body = await bodyOf(request);
     const member = await memberContext(request, env);
     const cart = await priceCart(env, body.items);
-    const method = (["home", "store", "express"].includes(String(body.shippingMethod)) ? body.shippingMethod : "home") as ShippingMethod;
-    const shipping = shippingAmount(method, cart.subtotal);
+    const method = (["home", "store"].includes(String(body.shippingMethod)) ? body.shippingMethod : "home") as ShippingMethod;
+    const shipping = await shippingAmount(env, method);
     const applied = await resolveApplied(env, member, cart, shipping, body.code, null);
     if (!applied) throw new PromotionError("INVALID_COUPON");
     return ok(previewData(cart, shipping, applied), "優惠碼套用成功");
@@ -435,8 +439,8 @@ export async function validateUserCoupon(request: Request, env: Env): Promise<Ha
     const body = await bodyOf(request);
     const member = await memberContext(request, env, true);
     const cart = await priceCart(env, body.items);
-    const method = (["home", "store", "express"].includes(String(body.shippingMethod)) ? body.shippingMethod : "home") as ShippingMethod;
-    const shipping = shippingAmount(method, cart.subtotal);
+    const method = (["home", "store"].includes(String(body.shippingMethod)) ? body.shippingMethod : "home") as ShippingMethod;
+    const shipping = await shippingAmount(env, method);
     const applied = await resolveApplied(env, member, cart, shipping, null, body.userCouponId);
     if (!applied || !applied.userCouponId) throw new PromotionError("INVALID_COUPON");
     return ok(previewData(cart, shipping, applied), "會員優惠券套用成功");
@@ -449,6 +453,7 @@ export async function createPromotionOrder(request: Request, env: Env): Promise<
     const member = await memberContext(request, env, true);
     const recipientName = typeof body.recipientName === "string" ? body.recipientName.trim() : "";
     const recipientPhone = typeof body.recipientPhone === "string" ? body.recipientPhone.trim() : "";
+    const deliveryAddress = typeof body.deliveryAddress === "string" ? body.deliveryAddress.trim() : "";
     const orderNote = typeof body.orderNote === "string" ? body.orderNote.trim() : "";
     if (!recipientName || recipientName.length > 80 || !/^09\d{8}$/.test(recipientPhone) || orderNote.length > 1000) {
       throw new PromotionError("INVALID_CART", 400, "收件人資料格式不正確");
@@ -473,7 +478,10 @@ export async function createPromotionOrder(request: Request, env: Env): Promise<
     });
     if (!cartMatches) throw new PromotionError("INVALID_CART", 409, "購物車內容已更新，請重新確認後再結帳");
     const cart = await priceCart(env, storedCart.results);
-    const method = (["home", "store", "express"].includes(String(body.shippingMethod)) ? body.shippingMethod : "home") as ShippingMethod;
+    const method = (["home", "store"].includes(String(body.shippingMethod)) ? body.shippingMethod : "home") as ShippingMethod;
+    if (method === "home" && (!deliveryAddress || deliveryAddress.length > 200)) {
+      throw new PromotionError("INVALID_CART", 400, "請輸入正確的宅配地址");
+    }
     const pickupStoreInput = body.pickupStore && typeof body.pickupStore === "object" ? body.pickupStore as Record<string, unknown> : null;
     const pickupStoreId = typeof pickupStoreInput?.storeId === "string" ? pickupStoreInput.storeId.trim() : "";
     if (method === "store" && !pickupStoreId) throw new PromotionError("PICKUP_STORE_REQUIRED");
@@ -484,7 +492,7 @@ export async function createPromotionOrder(request: Request, env: Env): Promise<
       FROM bank_transfer_settings WHERE id = 'default'`)
       .first<{ bankCode: string; bankName: string; branchName: string; accountName: string; accountNumber: string; note: string }>();
     if (!bankTransfer) throw new PromotionError("BANK_TRANSFER_NOT_CONFIGURED", 503);
-    const shipping = shippingAmount(method, cart.subtotal);
+    const shipping = await shippingAmount(env, method);
     const applied = await resolveApplied(env, member, cart, shipping, body.couponCode, body.userCouponId);
     const totals = previewData(cart, shipping, applied);
     const orderId = crypto.randomUUID();
@@ -495,7 +503,7 @@ export async function createPromotionOrder(request: Request, env: Env): Promise<
         promotion_id, promotion_name, coupon_code, user_coupon_id,
         shipping_method, pickup_store_provider, pickup_store_id,
         pickup_store_name, pickup_store_address, pickup_store_phone,
-        recipient_name, recipient_phone, order_note,
+        recipient_name, recipient_phone, delivery_address, order_note,
         remitting_bank, transfer_account_last_five,
         payment_status, shipping_status,
         bank_code, bank_name, bank_branch_name, bank_account_name,
@@ -504,7 +512,7 @@ export async function createPromotionOrder(request: Request, env: Env): Promise<
         ?, 'pending', 'TWD', ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?,
         ?, ?,
@@ -519,7 +527,7 @@ export async function createPromotionOrder(request: Request, env: Env): Promise<
       applied?.code?.code ?? null, applied?.userCouponId ?? null,
       method, pickupStore ? "UNIMART" : null, pickupStore?.storeId ?? null,
       pickupStore?.storeName ?? null, pickupStore?.storeAddress ?? null, pickupStore?.storePhone ?? null,
-      recipientName, recipientPhone, orderNote,
+      recipientName, recipientPhone, method === "home" ? deliveryAddress : "", orderNote,
       "", "",
       bankTransfer.bankCode, bankTransfer.bankName, bankTransfer.branchName,
       bankTransfer.accountName, bankTransfer.accountNumber, bankTransfer.note,

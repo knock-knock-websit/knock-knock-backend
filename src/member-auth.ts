@@ -16,11 +16,13 @@ type MemberGender = "undisclosed" | "female" | "male" | "other";
 type MemberProfile = {
   name: string;
   email: string;
+  phone: string;
   birthday: string | null;
   gender: MemberGender;
 };
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const phonePattern = /^09\d{8}$/;
 const encoder = new TextEncoder();
 
 function base64(bytes: Uint8Array): string {
@@ -156,9 +158,11 @@ async function register(request: Request, env: Env): Promise<HandlerResult> {
   const body = await parseBody(request);
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  const phone = typeof body?.phone === "string" ? body.phone.trim() : "";
   const password = typeof body?.password === "string" ? body.password : "";
   if (!name || name.length > 80) return fail("請輸入正確的會員姓名", 400);
   if (!emailPattern.test(email) || email.length > 254) return fail("請輸入正確的 Email 格式", 400);
+  if (!phonePattern.test(phone)) return fail("請輸入 09 開頭的 10 位數手機號碼", 400);
   if (password.length < 8 || password.length > 128) return fail("密碼需為 8 至 128 個字元", 400);
 
   const existing = await env.DB.prepare("SELECT id FROM members WHERE email = ?").bind(email).first();
@@ -168,8 +172,8 @@ async function register(request: Request, env: Env): Promise<HandlerResult> {
     email_verified_at: null, status: "active",
   };
   await env.DB.prepare(`
-    INSERT INTO members (id, name, email, password_hash) VALUES (?, ?, ?, ?)
-  `).bind(member.id, member.name, member.email, member.password_hash).run();
+    INSERT INTO members (id, name, email, phone, password_hash) VALUES (?, ?, ?, ?, ?)
+  `).bind(member.id, member.name, member.email, phone, member.password_hash).run();
   try {
     const verification = await createVerification(env, member);
     return ok({ email, ...verification }, "驗證碼已寄出", 200);
@@ -398,7 +402,7 @@ export async function getMemberProfile(request: Request, env: Env): Promise<Hand
   const member = await authenticatedMember(request, env);
   if (!member) return fail("請先登入會員", 401);
   const profile = await env.DB.prepare(`
-    SELECT name, email, birthday, gender FROM members WHERE id = ?
+    SELECT name, email, phone, birthday, gender FROM members WHERE id = ?
   `).bind(member.id).first<MemberProfile>();
   return profile ? ok(profile, "個人資料載入成功") : fail("找不到會員資料", 404);
 }
@@ -409,11 +413,13 @@ export async function updateMemberProfile(request: Request, env: Env): Promise<H
   const body = await parseBody(request);
   if (!body) return fail("個人資料格式不正確", 400);
   const name = typeof body.name === "string" ? body.name.trim() : "";
+  const phone = typeof body.phone === "string" ? body.phone.trim() : "";
   const birthday = body.birthday === null || body.birthday === ""
     ? null
     : typeof body.birthday === "string" ? body.birthday.trim() : undefined;
   const gender = body.gender;
   if (!name || name.length > 80) return fail("姓名需為 1 至 80 個字元", 400);
+  if (!phonePattern.test(phone)) return fail("請輸入 09 開頭的 10 位數手機號碼", 400);
   if (birthday === undefined || (birthday !== null && !validBirthday(birthday))) {
     return fail("生日格式不正確", 400);
   }
@@ -426,10 +432,10 @@ export async function updateMemberProfile(request: Request, env: Env): Promise<H
   }
   await env.DB.prepare(`
     UPDATE members
-    SET name = ?, birthday = ?, gender = ?, updated_at = CURRENT_TIMESTAMP
+    SET name = ?, phone = ?, birthday = ?, gender = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).bind(name, birthday, gender as MemberGender, member.id).run();
-  return ok({ name, email: member.email, birthday, gender }, "個人資料已更新");
+  `).bind(name, phone, birthday, gender as MemberGender, member.id).run();
+  return ok({ name, email: member.email, phone, birthday, gender }, "個人資料已更新");
 }
 
 export async function changeMemberPassword(request: Request, env: Env): Promise<HandlerResult> {
