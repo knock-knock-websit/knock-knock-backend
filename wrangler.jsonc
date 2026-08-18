@@ -4,7 +4,10 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-05-22",
   "vars": {
-    "FRONTEND_ORIGIN": "http://localhost:3000,http://localhost:5173"
+//    "FRONTEND_ORIGIN": "http://localhost:3000,http://localhost:5173"
+    "FRONTEND_ORIGIN": "https://knock-knock-front.vercel.app",
+    "ENVIRONMENT": "production",
+    "EMAIL_FROM": "t5138169@gmail.com"
   },
   "triggers": {
     "crons": ["* * * * *"]
